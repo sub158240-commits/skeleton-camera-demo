@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#3f4628">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>رصد الهيكل</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --olive: #3f4628;
+    --olive-deep: #2c311b;
+    --field: #20241a;
+    --sand: #e8e0c8;
+    --sand-dim: #b9b298;
+    --signal: #e4572e;
+    --ratio: 16 / 9;
+  }
+  @media (max-width: 600px) { :root { --ratio: 3 / 4; } }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--olive);
+    color: var(--sand);
+    font-family: "IBM Plex Sans Arabic", system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif;
+    line-height: 1.55;
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+    overscroll-behavior: none;
+  }
+  .app {
+    min-height: 100vh;
+    min-height: 100dvh;
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 12px 14px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  h1 { margin: 0; font-size: 1.15rem; font-weight: 700; letter-spacing: 0; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: .85rem; color: var(--sand-dim);
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--sand-dim); }
+  .live .dot { background: var(--signal); box-shadow: 0 0 0 4px rgba(228, 87, 46, .28); }
+  .live { color: var(--sand); }
+
+  .stage-wrap { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+  .stage {
+    position: relative;
+    aspect-ratio: var(--ratio);
+    width: min(100%, calc((100vh - 190px) * (var(--ratio))));
+    width: min(100%, calc((100dvh - 190px) * (var(--ratio))));
+    background: var(--field);
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 0 0 2px var(--sand-dim);
+  }
+  .stage video, .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .stage video { object-fit: cover; }
+  .stage.mirror video, .stage.mirror canvas { transform: scaleX(-1); }
+
+  /* Skeleton-only view: a plain measured grid so the colours stand out */
+  .stage.skeleton-only video { visibility: hidden; }
+  .stage.skeleton-only {
+    background-color: var(--field);
+    background-image:
+      linear-gradient(rgba(232,224,200,.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(232,224,200,.07) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  .corner { position: absolute; width: 22px; height: 22px; border: 0 solid var(--signal); pointer-events: none; z-index: 2; }
+  .corner.tl { top: 10px; left: 10px; border-top-width: 3px; border-left-width: 3px; }
+  .corner.tr { top: 10px; right: 10px; border-top-width: 3px; border-right-width: 3px; }
+  .corner.bl { bottom: 10px; left: 10px; border-bottom-width: 3px; border-left-width: 3px; }
+  .corner.br { bottom: 10px; right: 10px; border-bottom-width: 3px; border-right-width: 3px; }
+
+  .readout {
+    position: absolute; z-index: 3; top: 16px; inset-inline-start: 18px;
+    display: flex; gap: 14px; align-items: baseline;
+    padding: 4px 10px; border-radius: 4px;
+    background: rgba(32, 36, 26, .72);
+    font-size: .85rem; font-variant-numeric: tabular-nums;
+  }
+  .readout b { font-size: 1.25rem; font-weight: 700; }
+  .readout[hidden] { display: none; }
+
+  .overlay {
+    position: absolute; inset: 0; z-index: 4;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px; text-align: center;
+    background: var(--field);
+  }
+  .overlay[hidden] { display: none; }
+  .overlay p { margin: 0 0 18px; color: var(--sand-dim); max-width: 30ch; }
+  .overlay h2 { margin: 0 0 8px; font-size: 1.3rem; font-weight: 700; }
+
+  .dock { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  button {
+    font: inherit; font-weight: 600; color: var(--sand);
+    min-height: 52px; padding: 0 12px;
+    border-radius: 6px; cursor: pointer;
+    border: 2px solid var(--sand-dim);
+    background: transparent;
+    touch-action: manipulation;
+  }
+  button.primary { background: var(--sand); color: var(--field); border-color: var(--sand); min-height: 56px; padding: 0 28px; font-size: 1.05rem; }
+  button[disabled] { opacity: .4; cursor: not-allowed; }
+  button:active:not([disabled]) { transform: translateY(1px); }
+  button:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; }
+
+  .status { min-height: 1.5em; font-size: .92rem; color: var(--sand-dim); }
+  .status.error { color: #ffb199; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: .8rem; color: var(--sand-dim); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 18px; height: 5px; border-radius: 3px; display: inline-block; }
+
+  @media (max-width: 600px) { .legend { display: none; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>رصد الهيكل</h1>
+    <span class="chip" id="chip"><span class="dot"></span><span id="chipText">متوقف</span></span>
+  </header>
+
+  <div class="stage-wrap">
+    <div class="stage" id="stage">
+      <video id="video" playsinline muted autoplay></video>
+      <canvas id="canvas"></canvas>
+      <span class="corner tl"></span><span class="corner tr"></span>
+      <span class="corner bl"></span><span class="corner br"></span>
+      <div class="readout" id="readout" hidden>
+        <span>الأشخاص <b id="count">0</b></span>
+        <span><b id="fps">0</b> إطار/ث</span>
+      </div>
+      <div class="overlay" id="overlay">
+        <div>
+          <h2>جاهز للتشغيل</h2>
+          <p>بيطلب المتصفح إذن الكاميرا. التحليل كله يتم على جهازك ولا يُرسل أي شيء.</p>
+          <button class="primary" id="startBtn">شغّل الكاميرا</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status" id="status" role="status" aria-live="polite"></div>
+
+  <div class="dock">
+    <button id="flipBtn" disabled>تبديل الكاميرا</button>
+    <button id="skelBtn" disabled>الهيكل فقط</button>
+    <button id="stopBtn" disabled>إيقاف</button>
+  </div>
+
+  <div class="legend" aria-hidden="true">
+    <span><i style="background:#ff2a2a"></i>الرأس</span>
+    <span><i style="background:#ff9f1a"></i>الكتف</span>
+    <span><i style="background:#c8e61e"></i>الذراع</span>
+    <span><i style="background:#14d9d0"></i>الجذع</span>
+    <span><i style="background:#2ee59d"></i>الفخذ</span>
+    <span><i style="background:#6a4bd6"></i>الساق</span>
+  </div>
+</div>
+
+<script type="module">
+const VISION_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+const WASM = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
+const MODEL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+
+const $ = (id) => document.getElementById(id);
+const video = $("video"), canvas = $("canvas"), ctx = canvas.getContext("2d");
+const stage = $("stage"), overlay = $("overlay"), statusEl = $("status");
+const startBtn = $("startBtn"), flipBtn = $("flipBtn"), skelBtn = $("skelBtn"), stopBtn = $("stopBtn");
+const readout = $("readout"), countEl = $("count"), fpsEl = $("fps");
+const chip = $("chip"), chipText = $("chipText");
+
+let landmarker = null, stream = null, facing = "user", running = false, lastTime = -1;
+let frames = 0, fpsStamp = performance.now();
+
+function setStatus(msg, isError = false) {
+  statusEl.textContent = msg;
+  statusEl.classList.toggle("error", isError);
+}
+function setLive(on) {
+  chip.classList.toggle("live", on);
+  chipText.textContent = on ? "يعمل" : "متوقف";
+}
+
+async function loadModel() {
+  if (landmarker) return;
+  setStatus("جاري تحميل النموذج…");
+  const { PoseLandmarker, FilesetResolver } = await import(VISION_URL);
+  const fileset = await FilesetResolver.forVisionTasks(WASM);
+  landmarker = await PoseLandmarker.createFromOptions(fileset, {
+    baseOptions: { modelAssetPath: MODEL, delegate: "CPU" },
+    runningMode: "VIDEO",
+    numPoses: 5,
+    minPoseDetectionConfidence: 0.5,
+    minPosePresenceConfidence: 0.5,
+    minTrackingConfidence: 0.5
+  });
+}
+
+async function openCamera() {
+  closeStream();
+  stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } },
+    audio: false
+  });
+  video.srcObject = stream;
+  await video.play();
+  await new Promise((r) => {
+    if (video.videoWidth) return r();
+    video.onloadedmetadata = () => r();
+  });
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  stage.style.setProperty("--ratio", video.videoWidth + " / " + video.videoHeight);
+  stage.classList.toggle("mirror", facing === "user");
+}
+
+function closeStream() {
+  if (stream) stream.getTracks().forEach((t) => t.stop());
+  stream = null;
+}
+
+async function start() {
+  startBtn.disabled = true;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    startBtn.disabled = false;
+    setStatus("المتصفح يمنع الكاميرا. افتح الملف من Chrome أو Safari مباشرة (مو من معاينة داخل تطبيق)، أو من رابط https.", true);
+    return;
+  }
+  try {
+    setStatus("بيطلع لك طلب إذن الكاميرا، اضغط سماح.");
+    await openCamera();
+    await loadModel();
+    overlay.hidden = true;
+    readout.hidden = false;
+    [flipBtn, skelBtn, stopBtn].forEach((b) => (b.disabled = false));
+    running = true;
+    setLive(true);
+    setStatus("وقّف بحيث يظهر جسمك كامل من الرأس للقدمين مع إضاءة كافية.");
+    frames = 0; fpsStamp = performance.now();
+    requestAnimationFrame(loop);
+  } catch (err) {
+    console.error(err);
+    closeStream();
+    startBtn.disabled = false;
+    const name = err && err.name;
+    if (name === "NotAllowedError" || name === "SecurityError") {
+      if (location.protocol === "file:") {
+        setStatus("الصفحة مفتوحة كملف محلي، وغالبًا المتصفح يرفض الكاميرا بهالطريقة. ارفع الملف على استضافة https مجانية (مثل Netlify Drop) وافتح الرابط من Chrome أو Safari.", true);
+      } else {
+        setStatus("الإذن مرفوض لهذا الموقع. من شريط العنوان اضغط أيقونة القفل أو الإعدادات، فعّل الكاميرا، وحدّث الصفحة.", true);
+      }
+    } else if (name === "NotFoundError") {
+      setStatus("ما لقيت كاميرا في الجهاز.", true);
+    } else if (name === "NotReadableError") {
+      setStatus("الكاميرا مستخدمة من تطبيق ثاني. سكّر التطبيق الثاني وجرّب.", true);
+    } else {
+      setStatus("تعذّر تحميل النموذج. تأكد من الإنترنت وجرّب مرة ثانية. التفاصيل: " + (err && err.message ? err.message : err), true);
+    }
+  }
+}
+
+function stop() {
+  running = false;
+  closeStream();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  overlay.hidden = false;
+  readout.hidden = true;
+  startBtn.disabled = false;
+  [flipBtn, skelBtn, stopBtn].forEach((b) => (b.disabled = true));
+  setLive(false);
+  setStatus("");
+}
+
+// MediaPipe Pose landmark indices
+const L = { nose: 0, lSh: 11, rSh: 12, lEl: 13, rEl: 14, lWr: 15, rWr: 16, lHip: 23, rHip: 24, lKn: 25, rKn: 26, lAn: 27, rAn: 28 };
+const VIS = 0.5;
+const ok = (p) => p && (p.visibility ?? 1) >= VIS;
+function mid(a, b) {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, visibility: Math.min(a.visibility ?? 1, b.visibility ?? 1) };
+}
+
+function drawPerson(lm) {
+  const w = canvas.width, h = canvas.height;
+  const neck = mid(lm[L.lSh], lm[L.rSh]);
+  const hip = mid(lm[L.lHip], lm[L.rHip]);
+  const seg = (a, b, color) => {
+    if (!ok(a) || !ok(b)) return;
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(a.x * w, a.y * h);
+    ctx.lineTo(b.x * w, b.y * h);
+    ctx.stroke();
+  };
+  ctx.lineWidth = Math.max(6, Math.min(w, h) / 60);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  seg(neck, lm[L.nose], "#ff2a2a");
+  seg(neck, lm[L.lSh], "#ff9f1a");
+  seg(neck, lm[L.rSh], "#ffc21a");
+  seg(lm[L.lSh], lm[L.lEl], "#e4d11e");
+  seg(lm[L.lEl], lm[L.lWr], "#c8e61e");
+  seg(lm[L.rSh], lm[L.rEl], "#9fe61e");
+  seg(lm[L.rEl], lm[L.rWr], "#4de65a");
+  seg(neck, hip, "#14d9d0");
+  seg(hip, lm[L.lHip], "#13c9c0");
+  seg(hip, lm[L.rHip], "#13c9c0");
+  seg(lm[L.lHip], lm[L.lKn], "#2ee59d");
+  seg(lm[L.lKn], lm[L.lAn], "#3b82f0");
+  seg(lm[L.rHip], lm[L.rKn], "#2ed0e5");
+  seg(lm[L.rKn], lm[L.rAn], "#6a4bd6");
+}
+
+function loop() {
+  if (!running) return;
+  try {
+    if (video.readyState >= 2 && video.currentTime !== lastTime) {
+      lastTime = video.currentTime;
+      const res = landmarker.detectForVideo(video, performance.now());
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const people = res.landmarks || [];
+      people.forEach(drawPerson);
+      countEl.textContent = people.length;
+      frames++;
+      const now = performance.now();
+      if (now - fpsStamp >= 1000) {
+        fpsEl.textContent = Math.round((frames * 1000) / (now - fpsStamp));
+        frames = 0; fpsStamp = now;
+      }
+    }
+  } catch (e) {
+    console.error(e);
+    running = false;
+    setLive(false);
+    setStatus("خطأ أثناء التحليل: " + (e && e.message ? e.message : e), true);
+    return;
+  }
+  requestAnimationFrame(loop);
+}
+
+startBtn.addEventListener("click", start);
+stopBtn.addEventListener("click", stop);
+skelBtn.addEventListener("click", () => {
+  const on = stage.classList.toggle("skeleton-only");
+  skelBtn.textContent = on ? "إظهار الصورة" : "الهيكل فقط";
+});
+flipBtn.addEventListener("click", async () => {
+  facing = facing === "user" ? "environment" : "user";
+  running = false;
+  try {
+    await openCamera();
+  } catch (e) {
+    setStatus("تعذّر تبديل الكاميرا.", true);
+  }
+  running = true;
+  requestAnimationFrame(loop);
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) running = false;
+  else if (stream && !running && !stopBtn.disabled) { running = true; requestAnimationFrame(loop); }
+});
+</script>
+</body>
+</html>
